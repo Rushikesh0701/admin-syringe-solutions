@@ -394,13 +394,31 @@ async function startSync(channelIds = null) {
                                 await updateShopifyProduct(numericProductId, product);
                             }
 
-                            return { status: 'updated', sku, price, stock };
+                            // Publish to selected channels (if any)
+                            let publishedCount = 0;
+                            if (channelIds && channelIds.length > 0 && productId) {
+                                for (const channelId of channelIds) {
+                                    const published = await publishProductToChannel(productId, channelId);
+                                    if (published) publishedCount++;
+                                }
+                            }
+
+                            return { status: 'updated', sku, price, stock, publishedCount };
                         } else {
                             // Product doesn't exist - CREATE
                             const createdProduct = await createShopifyProduct(product);
                             productId = `gid://shopify/Product/${createdProduct.id}`;
 
-                            return { status: 'created', sku, productId };
+                            // Publish to selected channels (if any)
+                            let publishedCount = 0;
+                            if (channelIds && channelIds.length > 0) {
+                                for (const channelId of channelIds) {
+                                    const published = await publishProductToChannel(productId, channelId);
+                                    if (published) publishedCount++;
+                                }
+                            }
+
+                            return { status: 'created', sku, productId, publishedCount };
                         }
                     } catch (error) {
                         return { status: 'failed', sku, error: error.message };
@@ -414,10 +432,14 @@ async function startSync(channelIds = null) {
                     const data = result.value;
                     if (data.status === 'updated') {
                         summary.updated++;
-                        log(`  ✅ ${data.sku}: Updated (Price: $${data.price}, Stock: ${data.stock})`);
+                        summary.published += data.publishedCount || 0;
+                        const publishNote = data.publishedCount > 0 ? `, Published to ${data.publishedCount} channel(s)` : '';
+                        log(`  ✅ ${data.sku}: Updated (Price: $${data.price}, Stock: ${data.stock}${publishNote})`);
                     } else if (data.status === 'created') {
                         summary.created++;
-                        log(`  ✅ ${data.sku}: Created`);
+                        summary.published += data.publishedCount || 0;
+                        const publishNote = data.publishedCount > 0 ? ` → Published to ${data.publishedCount} channel(s)` : '';
+                        log(`  ✅ ${data.sku}: Created${publishNote}`);
                     } else if (data.status === 'failed') {
                         summary.failed++;
                         log(`  ❌ ${data.sku}: ${data.error}`);

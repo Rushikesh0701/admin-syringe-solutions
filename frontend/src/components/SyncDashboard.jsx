@@ -1,4 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import './SyncDashboard.css'
+
+// API Base URL - reads from environment variable, empty string uses Vite proxy in dev
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 function SyncDashboard() {
   const [isLoading, setIsLoading] = useState(false)
@@ -26,7 +30,7 @@ function SyncDashboard() {
   const fetchChannels = async () => {
     setChannelsLoading(true)
     try {
-      const response = await fetch('/api/channels')
+      const response = await fetch(`${API_BASE_URL}/api/channels`)
       const data = await response.json()
       if (data.success && data.channels) {
         setChannels(data.channels)
@@ -60,7 +64,7 @@ function SyncDashboard() {
     setSummary(null)
 
     try {
-      const response = await fetch('/api/sync/start', {
+      const response = await fetch(`${API_BASE_URL}/api/sync/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -204,270 +208,6 @@ function SyncDashboard() {
           </div>
         </div>
       </div>
-
-      <style>{`
-        * {
-          box-sizing: border-box;
-        }
-
-        .sync-page {
-          min-height: 100vh;
-          background: #eef2ff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 40px 20px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-
-        .sync-card {
-          width: 100%;
-          max-width: 700px;
-          background: white;
-          border-radius: 20px;
-          padding: 48px;
-          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
-        }
-
-        .header {
-          text-align: center;
-          margin-bottom: 40px;
-        }
-
-        .badge {
-          display: inline-block;
-          background: #f97316;
-          color: white;
-          font-size: 13px;
-          font-weight: 600;
-          padding: 8px 18px;
-          border-radius: 50px;
-          margin-bottom: 20px;
-        }
-
-        .title {
-          font-size: 32px;
-          font-weight: 800;
-          color: #1e293b;
-          line-height: 1.3;
-          margin: 0 0 16px 0;
-        }
-
-        .highlight {
-          color: #3b82f6;
-        }
-
-        .subtitle {
-          color: #64748b;
-          font-size: 15px;
-          margin: 0;
-          line-height: 1.6;
-        }
-
-        .controls {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 40px;
-        }
-
-        .dropdown-wrapper {
-          position: relative;
-          flex: 1;
-        }
-
-        .dropdown-btn {
-          width: 100%;
-          padding: 16px 20px;
-          border: 2px solid #e2e8f0;
-          border-radius: 12px;
-          background: white;
-          font-size: 15px;
-          color: #475569;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .dropdown-btn:hover {
-          border-color: #3b82f6;
-        }
-
-        .dropdown-btn:disabled {
-          background: #f8fafc;
-          cursor: not-allowed;
-        }
-
-        .dropdown-menu {
-          position: absolute;
-          top: 100%;
-          left: 0;
-          right: 0;
-          margin-top: 8px;
-          background: white;
-          border: 2px solid #e2e8f0;
-          border-radius: 12px;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.12);
-          z-index: 50;
-          max-height: 240px;
-          overflow-y: auto;
-        }
-
-        .dropdown-item {
-          padding: 14px 20px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          cursor: pointer;
-          font-size: 14px;
-          color: #334155;
-          transition: background 0.15s;
-        }
-
-        .dropdown-item:hover {
-          background: #f1f5f9;
-        }
-
-        .dropdown-item.loading {
-          color: #94a3b8;
-          justify-content: center;
-        }
-
-        .dropdown-item input[type="checkbox"] {
-          width: 18px;
-          height: 18px;
-          accent-color: #3b82f6;
-        }
-
-        .sync-btn {
-          padding: 16px 36px;
-          background: #f97316;
-          color: white;
-          border: none;
-          border-radius: 12px;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-
-        .sync-btn:hover:not(:disabled) {
-          background: #ea580c;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
-        }
-
-        .sync-btn:active:not(:disabled) {
-          transform: translateY(0);
-        }
-
-        .sync-btn:disabled {
-          background: #fdba74;
-          cursor: not-allowed;
-        }
-
-        .spinner {
-          width: 18px;
-          height: 18px;
-          border: 2px solid white;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-        }
-
-        .stat-card {
-          background: white;
-          border: 2px solid #f1f5f9;
-          border-radius: 16px;
-          padding: 24px 16px;
-          text-align: center;
-          transition: all 0.2s;
-        }
-
-        .stat-card:hover {
-          border-color: #e2e8f0;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-        }
-
-        .stat-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 12px auto;
-        }
-
-        .stat-icon.total {
-          background: #f1f5f9;
-          color: #475569;
-        }
-
-        .stat-icon.created {
-          background: #dcfce7;
-          color: #16a34a;
-        }
-
-        .stat-icon.updated {
-          background: #dbeafe;
-          color: #2563eb;
-        }
-
-        .stat-icon.failed {
-          background: #fee2e2;
-          color: #dc2626;
-        }
-
-        .stat-label {
-          display: block;
-          font-size: 12px;
-          color: #64748b;
-          margin-bottom: 8px;
-          font-weight: 500;
-        }
-
-        .stat-value {
-          display: block;
-          font-size: 28px;
-          font-weight: 700;
-          color: #1e293b;
-        }
-
-        .stat-value.created { color: #16a34a; }
-        .stat-value.updated { color: #2563eb; }
-        .stat-value.failed { color: #dc2626; }
-
-        @media (max-width: 700px) {
-          .sync-card {
-            padding: 32px 24px;
-          }
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .controls {
-            flex-direction: column;
-          }
-          .title {
-            font-size: 26px;
-          }
-        }
-      `}</style>
     </div>
   )
 }
