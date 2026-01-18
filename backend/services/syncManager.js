@@ -331,14 +331,50 @@ async function startSync(channelIds = null) {
             log(`🔢 Found product with stock: ${withStock.attributes.name} - Stock: ${withStock.attributes.totalQuantityOnHand}`);
         }
 
+        // Debug: Log first product's category-related fields to identify correct field name
+        if (inflowProducts.length > 0) {
+            const firstAttr = inflowProducts[0].attributes || {};
+            log(`📂 Category debug - First product: ${firstAttr.name}`);
+            log(`   categoryName: ${firstAttr.categoryName || 'undefined'}`);
+            log(`   category: ${firstAttr.category || 'undefined'}`);
+            log(`   productType: ${firstAttr.productType || 'undefined'}`);
+            log(`   type: ${firstAttr.type || 'undefined'}`);
+        }
+
         // Batch processing configuration
         const BATCH_SIZE = 5; // Process 5 products concurrently
         log(`🚀 Starting batch sync (${BATCH_SIZE} products at a time)...`);
+
+        // Helper function to strip width/height query parameters from image URLs
+        // This ensures Shopify receives full-resolution images instead of resized versions
+        const stripImageResizeParams = (url) => {
+            if (!url) return url;
+            try {
+                const urlObj = new URL(url);
+                // Remove resize-related parameters while keeping security tokens
+                ['width', 'height', 'w', 'h'].forEach(param => {
+                    urlObj.searchParams.delete(param);
+                });
+                return urlObj.toString();
+            } catch (e) {
+                // If URL parsing fails, fallback to regex removal
+                return url
+                    .replace(/[?&](width|height|w|h)=[^&]*/gi, '')
+                    .replace(/\?&/, '?')
+                    .replace(/&&/g, '&')
+                    .replace(/\?$/, '');
+            }
+        };
 
         // Prepare all products for processing
         const productsToSync = inflowProducts
             .map(item => {
                 const attr = item.attributes || {};
+                // Clean image URLs to get full-resolution versions
+                const cleanImageUrl = stripImageResizeParams(attr.imageUrl);
+                const cleanMediumUrl = stripImageResizeParams(attr.imageMediumUrl);
+                const cleanThumbUrl = stripImageResizeParams(attr.imageThumbUrl);
+
                 return {
                     sku: attr.sku,
                     name: attr.name,
@@ -348,11 +384,11 @@ async function startSync(channelIds = null) {
                     category: attr.categoryName || '',
                     vendor: attr.lastVendorName || '',
                     defaultImage: {
-                        originalUrl: attr.imageUrl,
-                        mediumUrl: attr.imageMediumUrl,
-                        thumbUrl: attr.imageThumbUrl
+                        originalUrl: cleanImageUrl,
+                        mediumUrl: cleanMediumUrl,
+                        thumbUrl: cleanThumbUrl
                     },
-                    images: attr.imageUrl ? [{ originalUrl: attr.imageUrl }] : []
+                    images: cleanImageUrl ? [{ originalUrl: cleanImageUrl }] : []
                 };
             })
             .filter(p => p.sku); // Skip products without SKU
