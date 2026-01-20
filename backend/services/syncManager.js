@@ -34,9 +34,9 @@ const log = (msg) => {
  */
 async function fetchInflowProducts() {
     try {
-        // inFlow Cloud API productlistings endpoint
+        // inFlow Cloud API products endpoint with images included for full-resolution URLs
         const apiVersion = '2025-10-02';
-        const url = `${INFLOW_API_BASE_URL}/${INFLOW_COMPANY_ID}/productlistings`;
+        const url = `${INFLOW_API_BASE_URL}/${INFLOW_COMPANY_ID}/products`;
         console.log('[inFlow] Fetching from:', url);
         console.log('[inFlow] Using API Token:', INFLOW_API_TOKEN ? `${INFLOW_API_TOKEN.substring(0, 10)}...` : 'NOT SET');
         console.log('[inFlow] Company ID:', INFLOW_COMPANY_ID);
@@ -59,13 +59,65 @@ async function fetchInflowProducts() {
             params: {
                 'includeCount': true,
                 'filter[isActive]': true,
+                'include': 'images,defaultImage,defaultPrice,category,inventoryLines',  // Include all necessary data
                 'count': 100
             }
         });
 
-        // Map inFlow JSON:API response to standardized format
+        // Parse JSON:API response with included relationships
         const products = response.data.data || [];
+        const included = response.data.included || [];
+
         console.log(`[inFlow] Received ${products.length} products`);
+        console.log(`[inFlow] Included ${included.length} related resources (images, etc.)`);
+
+        // Map included resources by type and id for easy lookup
+        const includedMap = {};
+        included.forEach(item => {
+            const key = `${item.type}:${item.id}`;
+            includedMap[key] = item;
+        });
+
+        // Attach included images and defaultImage to products
+        products.forEach(product => {
+            // Handle images relationship
+            if (product.relationships?.images?.data) {
+                product.images = product.relationships.images.data.map(ref => {
+                    const key = `${ref.type}:${ref.id}`;
+                    return includedMap[key]?.attributes || null;
+                }).filter(Boolean);
+            }
+
+            // Handle defaultImage relationship
+            if (product.relationships?.defaultImage?.data) {
+                const ref = product.relationships.defaultImage.data;
+                const key = `${ref.type}:${ref.id}`;
+                product.defaultImage = includedMap[key]?.attributes || null;
+            }
+
+            // Handle defaultPrice relationship
+            if (product.relationships?.defaultPrice?.data) {
+                const ref = product.relationships.defaultPrice.data;
+                const key = `${ref.type}:${ref.id}`;
+                product.defaultPrice = includedMap[key]?.attributes || null;
+            }
+
+            // Handle category relationship
+            if (product.relationships?.category?.data) {
+                const ref = product.relationships.category.data;
+                const key = `${ref.type}:${ref.id}`;
+                product.category = includedMap[key]?.attributes || null;
+            }
+
+            // Handle inventoryLines relationship (array)
+            if (product.relationships?.inventoryLines?.data) {
+                product.inventoryLines = product.relationships.inventoryLines.data.map(ref => {
+                    const key = `${ref.type}:${ref.id}`;
+                    return includedMap[key]?.attributes || null;
+                }).filter(Boolean);
+            }
+        });
+
         return products;
     } catch (error) {
         // Log detailed error info
@@ -214,7 +266,9 @@ async function updateShopifyVariant(variantId, product, existingVariant) {
             {
                 variant: {
                     id: numericId,
-                    price: product.defaultPrice?.unitPrice || product.Price || product.price || '0.00'
+                    price: product.defaultPrice?.unitPrice || product.Price || product.price || '0.00',
+                    sku: product.sku || product.SKU,
+                    barcode: product.barcode || product.Barcode || ''
                 }
             },
             {
@@ -249,6 +303,7 @@ async function updateShopifyProduct(productId, product) {
             {
                 product: {
                     id: productId,
+                    title: product.name || product.Name || '',
                     body_html: product.description || product.Description || '',
                     vendor: product.vendor || product.Vendor || '',
                     product_type: product.category || product.Category || '',
@@ -318,77 +373,118 @@ async function startSync(channelIds = null) {
         log('🔄 Starting Shopify sync...');
 
         // Debug: Find product with images
-        const withImages = inflowProducts.find(p => p.attributes?.imageUrl);
+        const withImages = inflowProducts.find(p => p.images?.length > 0 || p.defaultImage || p.attributes?.imageUrl);
         if (withImages) {
-            log(`📸 Found product with images: ${withImages.attributes.name} - ${withImages.attributes.imageUrl}`);
+            const imgUrl = withImages.images?.[0]?.originalUrl || withImages.defaultImage?.originalUrl || withImages.attributes?.imageUrl;
+            log(`📸 Found product with images: ${withImages.attributes.name} - ${imgUrl}`);
         } else {
             log('⚠️ No products found with images in this batch.');
         }
 
         // Debug: Find product with non-zero stock
-        const withStock = inflowProducts.find(p => parseFloat(p.attributes?.totalQuantityOnHand) > 0);
+        const withStock = inflowProducts.find(p => {
+            const invLines = p.inventoryLines || [];
+            const total = invLines.reduce((sum, line) => sum + (parseFloat(line.quantityOnHand || line.quantity) || 0), 0);
+            return total > 0 || parseFloat(p.attributes?.totalQuantityOnHand) > 0;
+        });
         if (withStock) {
-            log(`🔢 Found product with stock: ${withStock.attributes.name} - Stock: ${withStock.attributes.totalQuantityOnHand}`);
-        }
-
-        // Debug: Log first product's category-related fields to identify correct field name
-        if (inflowProducts.length > 0) {
-            const firstAttr = inflowProducts[0].attributes || {};
-            log(`📂 Category debug - First product: ${firstAttr.name}`);
-            log(`   categoryName: ${firstAttr.categoryName || 'undefined'}`);
-            log(`   category: ${firstAttr.category || 'undefined'}`);
-            log(`   productType: ${firstAttr.productType || 'undefined'}`);
-            log(`   type: ${firstAttr.type || 'undefined'}`);
+            const invLines = withStock.inventoryLines || [];
+            const total = invLines.reduce((sum, line) => sum + (parseFloat(line.quantityOnHand || line.quantity) || 0), 0);
+            log(`🔢 Found product with stock: ${withStock.attributes.name} - Stock: ${total || withStock.attributes.totalQuantityOnHand}`);
         }
 
         // Batch processing configuration
         const BATCH_SIZE = 5; // Process 5 products concurrently
         log(`🚀 Starting batch sync (${BATCH_SIZE} products at a time)...`);
 
-        // Helper function to strip width/height query parameters from image URLs
-        // This ensures Shopify receives full-resolution images instead of resized versions
-        const stripImageResizeParams = (url) => {
-            if (!url) return url;
-            try {
-                const urlObj = new URL(url);
-                // Remove resize-related parameters while keeping security tokens
-                ['width', 'height', 'w', 'h'].forEach(param => {
-                    urlObj.searchParams.delete(param);
-                });
-                return urlObj.toString();
-            } catch (e) {
-                // If URL parsing fails, fallback to regex removal
-                return url
-                    .replace(/[?&](width|height|w|h)=[^&]*/gi, '')
-                    .replace(/\?&/, '?')
-                    .replace(/&&/g, '&')
-                    .replace(/\?$/, '');
-            }
-        };
-
         // Prepare all products for processing
         const productsToSync = inflowProducts
             .map(item => {
                 const attr = item.attributes || {};
-                // Clean image URLs to get full-resolution versions
-                const cleanImageUrl = stripImageResizeParams(attr.imageUrl);
-                const cleanMediumUrl = stripImageResizeParams(attr.imageMediumUrl);
-                const cleanThumbUrl = stripImageResizeParams(attr.imageThumbUrl);
+                const inflowProduct = item; // Full product object for image extraction
+
+                // Comprehensive image URL extraction with quality prioritization
+                let imageUrl = null;
+
+                // Method 1: images array - prioritize originalUrl (from /products endpoint with include=images)
+                if (inflowProduct.images && Array.isArray(inflowProduct.images) && inflowProduct.images.length > 0) {
+                    // First priority: originalUrl
+                    if (inflowProduct.images[0].originalUrl) {
+                        imageUrl = inflowProduct.images[0].originalUrl;
+                    } else if (inflowProduct.images[0].largeUrl) {
+                        imageUrl = inflowProduct.images[0].largeUrl;
+                    } else if (inflowProduct.images[0].mediumUncroppedUrl) {
+                        imageUrl = inflowProduct.images[0].mediumUncroppedUrl;
+                    } else if (inflowProduct.images[0].mediumUrl) {
+                        imageUrl = inflowProduct.images[0].mediumUrl;
+                    } else if (inflowProduct.images[0].smallUrl) {
+                        imageUrl = inflowProduct.images[0].smallUrl;
+                    } else if (inflowProduct.images[0].thumbUrl) {
+                        imageUrl = inflowProduct.images[0].thumbUrl;
+                    }
+                }
+
+                // Method 2: defaultImage object - prioritize originalUrl (from /products endpoint with include=defaultImage)
+                if (!imageUrl && inflowProduct.defaultImage) {
+                    // First priority: originalUrl
+                    if (inflowProduct.defaultImage.originalUrl) {
+                        imageUrl = inflowProduct.defaultImage.originalUrl;
+                    } else if (inflowProduct.defaultImage.largeUrl) {
+                        imageUrl = inflowProduct.defaultImage.largeUrl;
+                    } else if (inflowProduct.defaultImage.mediumUncroppedUrl) {
+                        imageUrl = inflowProduct.defaultImage.mediumUncroppedUrl;
+                    } else if (inflowProduct.defaultImage.mediumUrl) {
+                        imageUrl = inflowProduct.defaultImage.mediumUrl;
+                    } else if (inflowProduct.defaultImage.smallUrl) {
+                        imageUrl = inflowProduct.defaultImage.smallUrl;
+                    } else if (inflowProduct.defaultImage.thumbUrl) {
+                        imageUrl = inflowProduct.defaultImage.thumbUrl;
+                    }
+                }
+
+                // Method 3: Direct image fields from /productlistings endpoint (fallback only)
+                // /productlistings returns: imageUrl, imageMediumUrl, imageThumbUrl directly on the product
+                // Note: These don't have originalUrl, so only use as fallback
+                if (!imageUrl) {
+                    if (attr.imageUrl) {
+                        imageUrl = attr.imageUrl;
+                    } else if (attr.imageMediumUrl) {
+                        imageUrl = attr.imageMediumUrl;
+                    } else if (attr.imageThumbUrl) {
+                        imageUrl = attr.imageThumbUrl;
+                    }
+                }
+
+                // Calculate total quantity from inventoryLines
+                let totalQuantity = 0;
+                if (inflowProduct.inventoryLines && Array.isArray(inflowProduct.inventoryLines)) {
+                    totalQuantity = inflowProduct.inventoryLines.reduce((sum, line) => {
+                        return sum + (parseFloat(line.quantityOnHand || line.quantity) || 0);
+                    }, 0);
+                }
+
+                // Debug: Log image URL extraction for first product
+                if (attr.sku && !global.imageDebugLogged) {
+                    console.log(`[DEBUG] Product: ${attr.name}`);
+                    console.log(`[DEBUG] Has images array:`, inflowProduct.images?.length || 0);
+                    console.log(`[DEBUG] Has defaultImage:`, !!inflowProduct.defaultImage);
+                    console.log(`[DEBUG] Final imageUrl:`, imageUrl);
+                    global.imageDebugLogged = true;
+                }
 
                 return {
                     sku: attr.sku,
                     name: attr.name,
                     description: attr.description,
-                    price: attr.unitPrice || '0.00',
-                    totalQuantityOnHand: attr.totalQuantityOnHand || 0,
-                    category: attr.categoryName || '',
+                    price: inflowProduct.defaultPrice?.unitPrice || attr.unitPrice || '0.00',
+                    totalQuantityOnHand: totalQuantity || attr.totalQuantityOnHand || 0,
+                    category: inflowProduct.category?.name || attr.categoryName || '',
                     vendor: attr.lastVendorName || '',
-                    defaultImage: {
-                        originalUrl: cleanImageUrl,
-                        mediumUrl: cleanMediumUrl,
-                        thumbUrl: cleanThumbUrl
-                    },
-                    images: cleanImageUrl ? [{ originalUrl: cleanImageUrl }] : []
+                    primaryImageUrl: imageUrl,
+                    defaultImage: imageUrl ? {
+                        originalUrl: imageUrl
+                    } : null,
+                    images: imageUrl ? [{ originalUrl: imageUrl }] : []
                 };
             })
             .filter(p => p.sku); // Skip products without SKU

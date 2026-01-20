@@ -91,9 +91,6 @@ function SyncDashboard() {
             Sync Products from<br />
             <span className="highlight">inFlow to Shopify</span>
           </h1>
-          <p className="subtitle">
-            Automatically sync your inventory, prices, and images between platforms.
-          </p>
         </div>
 
         {/* Controls */}
@@ -128,7 +125,10 @@ function SyncDashboard() {
                   <span>Select All</span>
                 </div>
                 {channelsLoading ? (
-                  <div className="dropdown-item loading">Loading...</div>
+                  <div className="dropdown-item loading">
+                    <span className="channel-spinner"></span>
+                    Loading channels...
+                  </div>
                 ) : channels.length === 0 ? (
                   <div className="dropdown-item loading">No channels found</div>
                 ) : (

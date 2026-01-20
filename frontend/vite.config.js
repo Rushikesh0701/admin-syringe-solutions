@@ -9,8 +9,8 @@ export default defineConfig({
         // Proxy /api requests to the backend server
         proxy: {
             '/api': {
-                // target: 'http://localhost:8080',
-                target: 'https://admin-syringe-solutions.onrender.com',
+                target: 'http://localhost:8080',
+                // target: 'https://admin-syringe-solutions.onrender.com',
                 changeOrigin: true,
                 secure: false
             }
