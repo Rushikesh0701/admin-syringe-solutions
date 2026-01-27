@@ -15,4 +15,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://b6ba67575da4.ngrok-free.app/api/auth/callback" ]
+redirect_urls = [ 
+  "http://localhost:8080/api/shopify/callback",
+  "https://b6ba67575da4.ngrok-free.app/api/auth/callback" 
+]

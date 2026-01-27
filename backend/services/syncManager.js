@@ -11,16 +11,71 @@ const INFLOW_API_TOKEN = process.env.INFLOW_API_TOKEN;
 const INFLOW_API_BASE_URL = process.env.NFLOW_API_BASE_URL || process.env.INFLOW_API_BASE_URL || 'https://cloudapi.inflowinventory.com';
 const INFLOW_COMPANY_ID = process.env.INFLOW_COMPANY_ID;
 
-// Shopify API
-const SHOPIFY_ACCESS_TOKEN = process.env.PRIVATE_STOREFRONT_API_TOKEN;
-const SHOP_DOMAIN = process.env.PUBLIC_STORE_DOMAIN;
-
-// Shopify GraphQL endpoint
-const SHOPIFY_API_URL = `https://${SHOP_DOMAIN}/admin/api/2024-01/graphql.json`;
-const SHOPIFY_REST_URL = `https://${SHOP_DOMAIN}/admin/api/2024-01`;
-
 // Cache for Shopify location ID
 let primaryLocationId = null;
+
+/**
+ * Gets the base Shopify API URL
+ */
+function getApiUrl() {
+    const shopDomain = process.env.PUBLIC_STORE_DOMAIN;
+    return `https://${shopDomain}/admin/api/2024-01/graphql.json`;
+}
+
+/**
+ * Gets the REST API URL
+ */
+function getRestUrl() {
+    const shopDomain = process.env.PUBLIC_STORE_DOMAIN;
+    return `https://${shopDomain}/admin/api/2024-01`;
+}
+
+/**
+ * Gets the Admin access token
+ */
+function getAccessToken() {
+    return process.env.PRIVATE_STOREFRONT_API_TOKEN;
+}
+
+/**
+ * Returns the Shopify OAuth URL to start the authentication process
+ */
+function getAuthUrl() {
+    const shopDomain = process.env.PUBLIC_STORE_DOMAIN;
+    const clientId = process.env.SHOPIFY_API_KEY;
+    const scopes = 'read_inventory,read_products,read_publications,write_inventory,write_products,write_publications';
+    const redirectUri = `http://localhost:8080/api/shopify/callback`;
+
+    console.log('[AUTH] Generating URL for Client ID:', clientId);
+
+    if (!clientId) {
+        throw new Error('SHOPIFY_API_KEY is not defined in backend/.env');
+    }
+
+    return `https://${shopDomain}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}`;
+}
+
+/**
+ * Exchanges the OAuth code for a permanent access token
+ */
+async function exchangeCodeForToken(code) {
+    const shopDomain = process.env.PUBLIC_STORE_DOMAIN;
+    const clientId = process.env.SHOPIFY_API_KEY;
+    const clientSecret = process.env.SHOPIFY_API_SECRET;
+
+    try {
+        const url = `https://${shopDomain}/admin/oauth/access_token`;
+        const response = await axios.post(url, {
+            client_id: clientId,
+            client_secret: clientSecret,
+            code: code
+        });
+        return response.data;
+    } catch (error) {
+        console.error('[Shopify] Failed to exchange code for token:', error.response?.data || error.message);
+        throw error;
+    }
+}
 
 // Global log helper
 const log = (msg) => {
@@ -169,11 +224,11 @@ async function searchShopifyBySku(sku) {
     `;
 
         const response = await axios.post(
-            SHOPIFY_API_URL,
+            getApiUrl(),
             { query },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -206,7 +261,7 @@ async function searchShopifyBySku(sku) {
 async function createShopifyProduct(product) {
     try {
         const response = await axios.post(
-            `${SHOPIFY_REST_URL}/products.json`,
+            `${getRestUrl()}/products.json`,
             {
                 product: {
                     title: product.Name || product.name,
@@ -227,7 +282,7 @@ async function createShopifyProduct(product) {
             },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -262,7 +317,7 @@ async function updateShopifyVariant(variantId, product, existingVariant) {
         }
 
         const response = await axios.put(
-            `${SHOPIFY_REST_URL}/variants/${numericId}.json`,
+            `${getRestUrl()}/variants/${numericId}.json`,
             {
                 variant: {
                     id: numericId,
@@ -273,7 +328,7 @@ async function updateShopifyVariant(variantId, product, existingVariant) {
             },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -299,7 +354,7 @@ async function updateShopifyProduct(productId, product) {
         log(`  📸 Syncing ${images.length} images for product ${productId}...`);
 
         const response = await axios.put(
-            `${SHOPIFY_REST_URL}/products/${productId}.json`,
+            `${getRestUrl()}/products/${productId}.json`,
             {
                 product: {
                     id: productId,
@@ -313,7 +368,7 @@ async function updateShopifyProduct(productId, product) {
             },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -348,7 +403,7 @@ async function startSync(channelIds = null) {
         if (!INFLOW_API_TOKEN) {
             throw new Error('INFLOW_API_TOKEN is not configured');
         }
-        if (!SHOPIFY_ACCESS_TOKEN || !SHOP_DOMAIN) {
+        if (!getAccessToken() || !process.env.PUBLIC_STORE_DOMAIN) {
             throw new Error('Shopify credentials are not configured (PRIVATE_STOREFRONT_API_TOKEN, PUBLIC_STORE_DOMAIN)');
         }
 
@@ -633,11 +688,11 @@ async function fetchShopifyChannels() {
         `;
 
         const response = await axios.post(
-            SHOPIFY_API_URL,
+            getApiUrl(),
             { query },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -685,7 +740,7 @@ async function publishProductToChannel(productId, publicationId) {
         `;
 
         const response = await axios.post(
-            SHOPIFY_API_URL,
+            getApiUrl(),
             {
                 query: mutation,
                 variables: {
@@ -695,7 +750,7 @@ async function publishProductToChannel(productId, publicationId) {
             },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -722,9 +777,9 @@ async function fetchShopifyLocations() {
     if (primaryLocationId) return primaryLocationId;
 
     try {
-        const response = await axios.get(`${SHOPIFY_REST_URL}/locations.json`, {
+        const response = await axios.get(`${getRestUrl()}/locations.json`, {
             headers: {
-                'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN
+                'X-Shopify-Access-Token': getAccessToken()
             }
         });
 
@@ -751,7 +806,7 @@ async function fetchShopifyLocations() {
 async function updateShopifyStock(inventoryItemId, locationId, available) {
     try {
         const response = await axios.post(
-            `${SHOPIFY_REST_URL}/inventory_levels/set.json`,
+            `${getRestUrl()}/inventory_levels/set.json`,
             {
                 location_id: locationId,
                 inventory_item_id: inventoryItemId,
@@ -759,7 +814,7 @@ async function updateShopifyStock(inventoryItemId, locationId, available) {
             },
             {
                 headers: {
-                    'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+                    'X-Shopify-Access-Token': getAccessToken(),
                     'Content-Type': 'application/json'
                 }
             }
@@ -781,5 +836,7 @@ module.exports = {
     updateShopifyStock,
     fetchShopifyChannels,
     publishProductToChannel,
-    fetchShopifyLocations
+    fetchShopifyLocations,
+    getAuthUrl,
+    exchangeCodeForToken
 };

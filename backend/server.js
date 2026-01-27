@@ -21,6 +21,50 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
+ * GET /api/shopify/auth
+ * Redirects to Shopify OAuth page
+ */
+app.get('/api/shopify/auth', (req, res) => {
+  const authUrl = syncManager.getAuthUrl();
+  console.log('[AUTH] Redirecting to:', authUrl);
+  res.redirect(authUrl);
+});
+
+/**
+ * GET /api/shopify/callback
+ * Handles Shopify OAuth callback
+ */
+app.get('/api/shopify/callback', async (req, res) => {
+  const { code, shop } = req.query;
+  console.log('[AUTH] Callback received for shop:', shop);
+
+  if (!code) {
+    return res.status(400).send('Missing code');
+  }
+
+  try {
+    const tokenData = await syncManager.exchangeCodeForToken(code);
+    console.log('[AUTH] Token successfully generated!');
+
+    // Output the token so the user can copy it easily
+    res.send(`
+      <div style="font-family: sans-serif; padding: 40px; text-align: center;">
+        <h1 style="color: #2c3e50;">Bhai, Success! 🎉</h1>
+        <p>Your new authorized Shopify token is:</p>
+        <code style="display: block; padding: 20px; background: #f4f4f4; border-radius: 8px; font-weight: bold; margin: 20px 0; word-break: break-all;">
+          ${tokenData.access_token}
+        </code>
+        <p>Please copy this and paste it into your <b>backend/.env</b> file for <b>PRIVATE_STOREFRONT_API_TOKEN</b>.</p>
+        <p style="color: #7f8c8d; font-size: 0.9em;">(After updating, restart the backend and your channels will work!)</p>
+      </div>
+    `);
+  } catch (error) {
+    console.error('[AUTH] Callback error:', error.message);
+    res.status(500).send('Failed to generate token. Please check backend logs.');
+  }
+});
+
+/**
  * GET /api/channels
  * Fetches available Shopify sales channels (publications)
  */
