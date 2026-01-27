@@ -1,0 +1,16 @@
+{
+  "name": "inflow-shopify-sync",
+  "version": "1.0.0",
+  "description": "Shopify App for InFlow Inventory Sync",
+  "license": "MIT",
+  "scripts": {
+    "dev": "shopify app dev",
+    "config:link": "shopify app config link",
+    "deploy": "shopify app deploy",
+    "shopify": "shopify"
+  },
+  "dependencies": {
+    "@shopify/app": "latest",
+    "@shopify/cli": "latest"
+  }
+}
