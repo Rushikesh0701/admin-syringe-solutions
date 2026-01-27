@@ -15,7 +15,7 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ 
+redirect_urls = [
   "http://localhost:8080/api/shopify/callback",
-  "https://admin-syringe-solutions.onrender.com/api/shopify/callback"
+  "https://admin-syringe-solutions.onrender.com/api/auth/callback"
 ]
