@@ -44,7 +44,8 @@ function getAuthUrl() {
     const shopDomain = process.env.PUBLIC_STORE_DOMAIN;
     const clientId = process.env.SHOPIFY_API_KEY;
     const scopes = 'read_inventory,read_products,read_publications,write_inventory,write_products,write_publications';
-    const redirectUri = `http://localhost:8080/api/shopify/callback`;
+    const baseUrl = process.env.BACKEND_PUBLIC_URL || 'http://localhost:8080';
+    const redirectUri = `${baseUrl}/api/shopify/callback`;
 
     console.log('[AUTH] Generating URL for Client ID:', clientId);
 
