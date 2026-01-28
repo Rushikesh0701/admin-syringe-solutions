@@ -60,107 +60,38 @@
 
 /* Controls Section */
 .controls {
-  display: flex;
-  gap: 12px;
   margin-bottom: 40px;
 }
 
-.dropdown-wrapper {
-  position: relative;
-  flex: 1;
-}
-
-.dropdown-btn {
-  width: 100%;
-  padding: 16px 20px;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  background: white;
-  font-size: 15px;
-  color: #475569;
+.controls.center {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.dropdown-btn:hover {
-  border-color: #3b82f6;
-}
-
-.dropdown-btn:disabled {
-  background: #f8fafc;
-  cursor: not-allowed;
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 8px;
-  background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
-  z-index: 50;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.dropdown-item {
-  padding: 14px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  font-size: 14px;
-  color: #334155;
-  transition: background 0.15s;
-}
-
-.dropdown-item:hover {
-  background: #f1f5f9;
-}
-
-.dropdown-item.loading {
-  color: #94a3b8;
   justify-content: center;
-  gap: 10px;
 }
 
-.channel-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #e2e8f0;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.dropdown-item input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: #3b82f6;
-}
-
-/* Sync Button */
+/* Button styles */
 .sync-btn {
   padding: 16px 36px;
   background: #f97316;
   color: white;
   border: none;
   border-radius: 12px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   transition: all 0.2s;
   white-space: nowrap;
 }
+
+.sync-btn.primary-large {
+  padding: 18px 48px;
+  font-size: 18px;
+  box-shadow: 0 10px 15px -3px rgba(249, 115, 22, 0.2);
+}
+
 
 .sync-btn:hover:not(:disabled) {
   background: #ea580c;

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import './SyncDashboard.css'
 
 // API Base URL - reads from environment variable, empty string uses Vite proxy in dev
@@ -8,23 +8,10 @@ function SyncDashboard() {
   const [isLoading, setIsLoading] = useState(false)
   const [summary, setSummary] = useState(null)
   const [channels, setChannels] = useState([])
-  const [selectedChannels, setSelectedChannels] = useState([])
   const [channelsLoading, setChannelsLoading] = useState(true)
-  const [showChannelDropdown, setShowChannelDropdown] = useState(false)
-  const dropdownRef = useRef(null)
 
   useEffect(() => {
     fetchChannels()
-  }, [])
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowChannelDropdown(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
   const fetchChannels = async () => {
@@ -34,7 +21,6 @@ function SyncDashboard() {
       const data = await response.json()
       if (data.success && data.channels) {
         setChannels(data.channels)
-        setSelectedChannels([])
       }
     } catch (error) {
       console.error('Failed to fetch channels:', error)
@@ -43,32 +29,18 @@ function SyncDashboard() {
     }
   }
 
-  const toggleChannel = (channelId) => {
-    setSelectedChannels(prev => 
-      prev.includes(channelId) 
-        ? prev.filter(id => id !== channelId) 
-        : [...prev, channelId]
-    )
-  }
-
-  const toggleSelectAll = () => {
-    if (selectedChannels.length === channels.length) {
-      setSelectedChannels([])
-    } else {
-      setSelectedChannels(channels.map(c => c.id))
-    }
-  }
-
-  const handleStartSync = async () => {
+  const handleSyncAll = async () => {
     setIsLoading(true)
     setSummary(null)
+
+    const allChannelIds = channels.map(c => c.id)
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/sync/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channelIds: selectedChannels.length > 0 ? selectedChannels : null
+          channelIds: allChannelIds.length > 0 ? allChannelIds : null
         })
       })
 
@@ -91,79 +63,25 @@ function SyncDashboard() {
             Sync Products from<br />
             <span className="highlight">inFlow to Shopify</span>
           </h1>
+          <p className="subtitle">
+            Synchronize your products and inventory levels across all Shopify sales channels with a single click.
+          </p>
         </div>
 
         {/* Controls */}
-        <div className="controls">
-          {/* Channel Selector */}
-          <div className="dropdown-wrapper" ref={dropdownRef}>
-            <button
-              className="dropdown-btn"
-              onClick={() => setShowChannelDropdown(!showChannelDropdown)}
-              disabled={channelsLoading || isLoading}
-            >
-              <span>
-                {selectedChannels.length === 0 
-                  ? 'Select Channels' 
-                  : selectedChannels.length === channels.length 
-                    ? 'All Channels' 
-                    : `${selectedChannels.length} Channel(s)`}
-              </span>
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-
-            {showChannelDropdown && (
-              <div className="dropdown-menu">
-                <div className="dropdown-item" onClick={toggleSelectAll}>
-                  <input 
-                    type="checkbox" 
-                    checked={selectedChannels.length === channels.length && channels.length > 0}
-                    readOnly
-                  />
-                  <span>Select All</span>
-                </div>
-                {channelsLoading ? (
-                  <div className="dropdown-item loading">
-                    <span className="channel-spinner"></span>
-                    Loading channels...
-                  </div>
-                ) : channels.length === 0 ? (
-                  <div className="dropdown-item loading">No channels found</div>
-                ) : (
-                  channels.map(channel => (
-                    <div 
-                      key={channel.id}
-                      className="dropdown-item"
-                      onClick={() => toggleChannel(channel.id)}
-                    >
-                      <input 
-                        type="checkbox" 
-                        checked={selectedChannels.includes(channel.id)}
-                        readOnly
-                      />
-                      <span>{channel.name}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Sync Button */}
+        <div className="controls center">
           <button
-            className="sync-btn"
-            onClick={handleStartSync}
-            disabled={isLoading}
+            className="sync-btn primary-large"
+            onClick={handleSyncAll}
+            disabled={isLoading || channelsLoading}
           >
             {isLoading ? (
               <>
                 <span className="spinner"></span>
-                Syncing...
+                Syncing Products...
               </>
             ) : (
-              'Start Sync'
+              'Sync Products'
             )}
           </button>
         </div>
