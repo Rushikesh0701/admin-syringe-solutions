@@ -63,9 +63,6 @@ function SyncDashboard() {
             Sync Products from<br />
             <span className="highlight">inFlow to Shopify</span>
           </h1>
-          <p className="subtitle">
-            Synchronize your products and inventory levels across all Shopify sales channels with a single click.
-          </p>
         </div>
 
         {/* Controls */}
@@ -75,10 +72,10 @@ function SyncDashboard() {
             onClick={handleSyncAll}
             disabled={isLoading || channelsLoading}
           >
-            {isLoading ? (
+            {isLoading || channelsLoading ? (
               <>
                 <span className="spinner"></span>
-                Syncing Products...
+                {isLoading ? 'Syncing Products...' : 'Loading...'}
               </>
             ) : (
               'Sync Products'
