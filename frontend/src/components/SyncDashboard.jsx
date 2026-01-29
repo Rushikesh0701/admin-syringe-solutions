@@ -58,10 +58,8 @@ function SyncDashboard() {
       <div className="sync-card">
         {/* Header */}
         <div className="header">
-          <div className="badge">Inventory Manager</div>
           <h1 className="title">
-            Sync Products from<br />
-            <span className="highlight">inFlow to Shopify</span>
+            Sync Products from InFlow
           </h1>
         </div>
 
