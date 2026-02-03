@@ -2,7 +2,7 @@
 
 client_id = "7447faca8fb2c55fd6d4acdb52eb8fc0"
 name = "InFlow Sync"
-application_url = "https://admin-syringe-solutions.netlify.app/"
+application_url = "http://184.72.175.48:3001/"
 embedded = true
 
 [webhooks]
@@ -17,5 +17,8 @@ use_legacy_install_flow = false
 [auth]
 redirect_urls = [
   "http://localhost:8080/api/shopify/callback",
-  "https://admin-syringe-solutions.onrender.com/api/auth/callback"
+  "http://184.72.175.48:8080/api/auth/callback",
+
+  # "https://admin-syringe-solutions.onrender.com/api/auth/callback"
+
 ]
