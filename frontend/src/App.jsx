@@ -1,10 +1,13 @@
+import { AppProvider } from '@shopify/polaris';
+import translations from '@shopify/polaris/locales/en.json';
+import '@shopify/polaris/build/esm/styles.css';
 import SyncDashboard from './components/SyncDashboard'
 
 function App() {
   return (
-    <div style={{ background: '#eef2ff', minHeight: '100vh' }}>
+    <AppProvider i18n={translations}>
       <SyncDashboard />
-    </div>
+    </AppProvider>
   )
 }
 

@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.gitignore
+*.md
+# .env (removed from ignore to allow baking into build)
+.env.local
+.env.*.local
+.DS_Store
+npm-debug.log*

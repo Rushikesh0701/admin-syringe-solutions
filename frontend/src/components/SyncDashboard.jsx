@@ -1,5 +1,24 @@
 import { useState, useEffect } from 'react'
-import './SyncDashboard.css'
+import {
+  Page,
+  Layout,
+  Card,
+  Button,
+  Text,
+  BlockStack,
+  InlineStack,
+  Box,
+  Divider,
+  Grid,
+  Icon
+} from '@shopify/polaris';
+import {
+  ImportIcon,
+  PlusIcon,
+  RefreshIcon,
+  AlertBubbleIcon,
+  InventoryIcon
+} from '@shopify/polaris-icons';
 
 // API Base URL - reads from environment variable, empty string uses Vite proxy in dev
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -53,75 +72,107 @@ function SyncDashboard() {
     }
   }
 
+  const SummaryBox = ({ icon, label, value, color }) => (
+    <Box
+      padding="300"
+      background="bg-surface"
+      borderColor="border"
+      borderWidth="025"
+      borderRadius="200"
+      minHeight="110px"
+      width="100%"
+    >
+      <BlockStack gap="200" align="center">
+        <Icon source={icon} tone={color === 'base' ? undefined : color} />
+        <Text variant="bodySm" as="p" tone="subdued" alignment="center">
+          {label}
+        </Text>
+        <Text variant="headingMd" as="span" alignment="center" tone={color === 'base' ? undefined : color}>
+          {value ?? '-'}
+        </Text>
+      </BlockStack>
+    </Box>
+  );
+
   return (
-    <div className="sync-page">
-      <div className="sync-card">
-        {/* Header */}
-        <div className="header">
-          <h1 className="title">
-            Sync Products from InFlow
-          </h1>
-        </div>
+    <Page>
+      {/* Polaris Web Component: ui-title-bar */}
+      <ui-title-bar title="InFlow Sync" />
 
-        {/* Controls */}
-        <div className="controls center">
-          <button
-            className="sync-btn primary-large"
-            onClick={handleSyncAll}
-            disabled={isLoading || channelsLoading}
-          >
-            {isLoading || channelsLoading ? (
-              <>
-                <span className="spinner"></span>
-                {isLoading ? 'Syncing Products...' : 'Loading...'}
-              </>
-            ) : (
-              'Sync Products'
-            )}
-          </button>
-        </div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 'calc(100vh - 120px)', // Account for title bar and padding
+        padding: '20px'
+      }}>
+        <div style={{ width: '100%', maxWidth: '750px' }}>
+          <Card padding="600">
+            <BlockStack gap="600" align="center">
+              {/* Heading */}
+              <Text variant="headingXl" as="h1" alignment="center">
+                Sync Products from InFlow
+              </Text>
 
-        {/* Stats Cards */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-icon total">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-              </svg>
-            </div>
-            <span className="stat-label">Total Products</span>
-            <span className="stat-value">{summary?.total ?? '-'}</span>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon created">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14m-7-7h14"/>
-              </svg>
-            </div>
-            <span className="stat-label">Created</span>
-            <span className="stat-value created">{summary?.created ?? '-'}</span>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon updated">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-              </svg>
-            </div>
-            <span className="stat-label">Updated</span>
-            <span className="stat-value updated">{summary?.updated ?? '-'}</span>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon failed">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
-            </div>
-            <span className="stat-label">Failed</span>
-            <span className="stat-value failed">{summary?.failed ?? '-'}</span>
-          </div>
+              {/* Primary Action */}
+              <InlineStack align="center">
+                <div style={{ height: '60px', width: '250px' }}>
+                  <Button
+                    fullWidth
+                    size="large"
+                    variant="primary"
+                    onClick={handleSyncAll}
+                    loading={isLoading}
+                    disabled={channelsLoading}
+                  >
+                    <span style={{ fontSize: '18px' }}>
+                      {channelsLoading ? 'Loading...' : 'Sync Products'}
+                    </span>
+                  </Button>
+                </div>
+              </InlineStack>
+
+              {/* Results Grid */}
+              <Grid columns={{ xs: 1, sm: 2, md: 4, lg: 4 }} gap="300">
+                <Grid.Cell>
+                  <SummaryBox
+                    icon={InventoryIcon}
+                    label="Total Products"
+                    value={summary?.total}
+                    color="base"
+                  />
+                </Grid.Cell>
+                <Grid.Cell>
+                  <SummaryBox
+                    icon={PlusIcon}
+                    label="Created"
+                    value={summary?.created}
+                    color="success"
+                  />
+                </Grid.Cell>
+                <Grid.Cell>
+                  <SummaryBox
+                    icon={RefreshIcon}
+                    label="Updated"
+                    value={summary?.updated}
+                    color="info"
+                  />
+                </Grid.Cell>
+                <Grid.Cell>
+                  <SummaryBox
+                    icon={AlertBubbleIcon}
+                    label="Failed"
+                    value={summary?.failed}
+                    color="critical"
+                  />
+                </Grid.Cell>
+              </Grid>
+            </BlockStack>
+          </Card>
         </div>
       </div>
-    </div>
+    </Page>
   )
 }
 

@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  backend:
+    image: 168895053043.dkr.ecr.us-east-1.amazonaws.com/syringe_solution_admin:backend-latest
+    container_name: inflow-backend-prod
+    pull_policy: always
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - INFLOW_API_BASE_URL=https://cloudapi.inflowinventory.com
+      - INFLOW_COMPANY_ID=${INFLOW_COMPANY_ID}
+      - INFLOW_API_TOKEN=${INFLOW_API_TOKEN}
+      - PUBLIC_STOREFRONT_ID=${PUBLIC_STOREFRONT_ID}
+      - PUBLIC_STOREFRONT_API_TOKEN=${PUBLIC_STOREFRONT_API_TOKEN}
+      - PUBLIC_STORE_DOMAIN=${PUBLIC_STORE_DOMAIN}
+      - PRIVATE_STOREFRONT_API_TOKEN=${PRIVATE_STOREFRONT_API_TOKEN}
+      - SHOPIFY_API_KEY=${SHOPIFY_API_KEY}
+      - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET}
+      - PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=${PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID}
+      - PUBLIC_CUSTOMER_ACCOUNT_API_URL=${PUBLIC_CUSTOMER_ACCOUNT_API_URL}
+      - SHOP_ID=${SHOP_ID}
+    restart: always
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - app-network
+
+  frontend:
+    image: 168895053043.dkr.ecr.us-east-1.amazonaws.com/syringe_solution_admin:frontend-latest
+    container_name: inflow-frontend-prod
+    pull_policy: always
+    ports:
+      - "3000:80"
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  backend-data:
