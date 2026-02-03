@@ -44,7 +44,7 @@ login_ecr() {
 
 build_push_frontend() {
     echo -e "\n${BLUE}Building Frontend...${NC}"
-    docker build -t inflow-frontend ./frontend
+    docker build --platform linux/amd64 -t inflow-frontend ./frontend
     if [ $? -ne 0 ]; then echo -e "${RED}Frontend Build Failed!${NC}"; return 1; fi
 
     echo -e "${BLUE}Tagging Frontend...${NC}"
@@ -59,7 +59,7 @@ build_push_frontend() {
 
 build_push_backend() {
     echo -e "\n${BLUE}Building Backend...${NC}"
-    docker build -t inflow-backend ./backend
+    docker build --platform linux/amd64 -t inflow-backend ./backend
     if [ $? -ne 0 ]; then echo -e "${RED}Backend Build Failed!${NC}"; return 1; fi
 
     echo -e "${BLUE}Tagging Backend...${NC}"
