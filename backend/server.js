@@ -102,22 +102,35 @@ app.post('/api/sync/start', async (req, res) => {
     // Execute the sync and collect logs
     const result = await syncManager.startSync(channelIds);
 
-    res.json({
+    const response = {
       success: result.success,
       logs: result.logs,
       summary: {
         total: result.summary.total,
         created: result.summary.created,
         updated: result.summary.updated,
+        unchanged: result.summary.skipped,
         failed: result.summary.failed
       }
-    });
+    };
+
+    // Return appropriate HTTP status
+    if (result.summary.failed > 0 && result.summary.failed === result.summary.total) {
+      // All products failed
+      res.status(500).json(response);
+    } else if (result.summary.failed > 0) {
+      // Partial success
+      res.status(207).json(response);
+    } else {
+      // Full success
+      res.json(response);
+    }
   } catch (error) {
     console.error('[SYNC] Fatal error:', error.message);
     res.status(500).json({
       success: false,
       logs: [`Fatal Error: ${error.message}`],
-      summary: { total: 0, created: 0, updated: 0, failed: 0 }
+      summary: { total: 0, created: 0, updated: 0, unchanged: 0, failed: 0 }
     });
   }
 });

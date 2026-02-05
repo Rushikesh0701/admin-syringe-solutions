@@ -390,7 +390,7 @@ async function updateShopifyProduct(productId, product) {
  */
 async function startSync(channelIds = null) {
     const logs = [];
-    const summary = { total: 0, created: 0, updated: 0, failed: 0, published: 0 };
+    const summary = { total: 0, created: 0, updated: 0, skipped: 0, failed: 0, published: 0 };
 
     const log = (message) => {
         const timestamp = new Date().toISOString();
@@ -572,7 +572,31 @@ async function startSync(channelIds = null) {
                         let productId = null;
 
                         if (existingVariant) {
-                            // Product exists - UPDATE
+                            // Product exists - Check if anything changed (name, price, stock)
+                            const shopifyPrice = parseFloat(existingVariant.price).toFixed(2);
+                            const inflowPrice = parseFloat(price).toFixed(2);
+                            const shopifyStock = existingVariant.inventoryQuantity || 0;
+                            const shopifyTitle = (existingVariant.product?.title || '').trim();
+                            const inflowTitle = (name || '').trim();
+
+                            const priceChanged = shopifyPrice !== inflowPrice;
+                            const stockChanged = shopifyStock !== stock;
+                            const titleChanged = shopifyTitle !== inflowTitle;
+
+                            // Debug logging to see what's different
+                            if (priceChanged || stockChanged || titleChanged) {
+                                console.log(`[DEBUG] ${sku} - Changes detected:`);
+                                if (priceChanged) console.log(`  Price: Shopify="${shopifyPrice}" vs inFlow="${inflowPrice}"`);
+                                if (stockChanged) console.log(`  Stock: Shopify=${shopifyStock} vs inFlow=${stock}`);
+                                if (titleChanged) console.log(`  Title: Shopify="${shopifyTitle}" vs inFlow="${inflowTitle}"`);
+                            }
+
+                            // If nothing changed, skip this product
+                            if (!priceChanged && !stockChanged && !titleChanged) {
+                                return { status: 'skipped', sku };
+                            }
+
+                            // Something changed - UPDATE
                             await updateShopifyVariant(existingVariant.id, product, existingVariant);
 
                             // Update product-level info (images)
@@ -591,7 +615,7 @@ async function startSync(channelIds = null) {
                                 }
                             }
 
-                            return { status: 'updated', sku, price, stock, publishedCount };
+                            return { status: 'updated', sku, price, stock, publishedCount, priceChanged, stockChanged, titleChanged };
                         } else {
                             // Product doesn't exist - CREATE
                             const createdProduct = await createShopifyProduct(product);
@@ -621,8 +645,16 @@ async function startSync(channelIds = null) {
                     if (data.status === 'updated') {
                         summary.updated++;
                         summary.published += data.publishedCount || 0;
+                        const changes = [];
+                        if (data.titleChanged) changes.push('Title');
+                        if (data.priceChanged) changes.push(`Price: $${data.price}`);
+                        if (data.stockChanged) changes.push(`Stock: ${data.stock}`);
+                        const changeDetails = changes.length > 0 ? ` (${changes.join(', ')})` : '';
                         const publishNote = data.publishedCount > 0 ? `, Published to ${data.publishedCount} channel(s)` : '';
-                        log(`  ✅ ${data.sku}: Updated (Price: $${data.price}, Stock: ${data.stock}${publishNote})`);
+                        log(`  ✅ ${data.sku}: Updated${changeDetails}${publishNote}`);
+                    } else if (data.status === 'skipped') {
+                        summary.skipped++;
+                        // Don't log skipped items to keep logs clean
                     } else if (data.status === 'created') {
                         summary.created++;
                         summary.published += data.publishedCount || 0;
@@ -632,9 +664,9 @@ async function startSync(channelIds = null) {
                         summary.failed++;
                         log(`  ❌ ${data.sku}: ${data.error}`);
                     }
-                } else {
+                } else { // result.status === 'rejected'
                     summary.failed++;
-                    log(`  ❌ Batch error: ${result.reason}`);
+                    log(`  ❌ Batch error for a product: ${result.reason}`);
                 }
             }
 
@@ -650,6 +682,7 @@ async function startSync(channelIds = null) {
         log(`   Total Products: ${summary.total}`);
         log(`   Created: ${summary.created}`);
         log(`   Updated: ${summary.updated}`);
+        log(`   Unchanged: ${summary.skipped}`);
         log(`   Published: ${summary.published}`);
         log(`   Failed: ${summary.failed}`);
 

@@ -18,8 +18,8 @@ export default defineConfig({
         proxy: {
             '/api': {
                 // target: 'http://localhost:8080',
-                // target: 'https://admin-syringe-solutions.onrender.com',
-                target: 'http://184.72.175.48:8080',
+                target: 'https://admin-syringe-solutions.onrender.com',
+                // target: 'http://184.72.175.48:8080',
                 changeOrigin: true,
                 secure: false
             }

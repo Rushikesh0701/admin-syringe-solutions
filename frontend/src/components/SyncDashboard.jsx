@@ -65,8 +65,14 @@ function SyncDashboard() {
 
       const data = await response.json()
       setSummary(data.summary)
+      
+      // Show alert if there were failures
+      if (data.summary?.failed > 0) {
+        alert(`Sync completed with ${data.summary.failed} error(s). Check the logs for details.`)
+      }
     } catch (error) {
       setSummary({ total: 0, created: 0, updated: 0, failed: 1, error: error.message })
+      alert(`Sync failed: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
