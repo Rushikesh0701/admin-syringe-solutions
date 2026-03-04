@@ -357,22 +357,30 @@ async function updateShopifyVariant(variantId, product, existingVariant) {
  */
 async function updateShopifyProduct(productId, product) {
     try {
-        const images = product.defaultImage?.originalUrl ? [{ src: product.defaultImage.originalUrl }] :
-            (product.images && product.images.length > 0 ? product.images.map(img => ({ src: img.originalUrl || img.url })) : []);
+        // Only sync images from inFlow — do NOT overwrite title, description, vendor,
+        // or product_type so that manual edits made directly in Shopify are preserved.
+        const images = product.defaultImage?.originalUrl
+            ? [{ src: product.defaultImage.originalUrl }]
+            : (product.images && product.images.length > 0
+                ? product.images.map(img => ({ src: img.originalUrl || img.url }))
+                : []);
 
-        log(`Syncing ${images.length} images for product ${productId}...`);
+        // Skip the API call entirely if there are no images to sync
+        if (images.length === 0) {
+            log(`  No images to sync for product ${productId}, skipping image update.`);
+            return null;
+        }
+
+        log(`  Syncing ${images.length} image(s) for product ${productId}...`);
 
         const response = await axios.put(
             `${getRestUrl()}/products/${productId}.json`,
             {
                 product: {
                     id: productId,
-                    title: product.name || product.Name || '',
-                    body_html: product.description || product.Description || '',
-                    vendor: product.vendor || product.Vendor || '',
-                    product_type: product.category || product.Category || '',
-                    images: product.defaultImage?.originalUrl ? [{ src: product.defaultImage.originalUrl }] :
-                        (product.images && product.images.length > 0 ? product.images.map(img => ({ src: img.originalUrl || img.url })) : [])
+                    images
+                    // title, body_html, vendor, product_type intentionally omitted
+                    // to preserve any manual edits made in Shopify
                 }
             },
             {
