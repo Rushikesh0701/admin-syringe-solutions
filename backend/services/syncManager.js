@@ -8,7 +8,7 @@ const axios = require('axios');
 // Configuration from environment variables
 // inFlow API
 const INFLOW_API_TOKEN = process.env.INFLOW_API_TOKEN;
-const INFLOW_API_BASE_URL = process.env.NFLOW_API_BASE_URL || process.env.INFLOW_API_BASE_URL || 'https://cloudapi.inflowinventory.com';
+const INFLOW_API_BASE_URL = process.env.INFLOW_API_BASE_URL || 'https://cloudapi.inflowinventory.com';
 const INFLOW_COMPANY_ID = process.env.INFLOW_COMPANY_ID;
 
 // Cache for Shopify location ID
@@ -117,7 +117,8 @@ async function fetchInflowProducts() {
                 'filter[isActive]': true,
                 'include': 'images,defaultImage,defaultPrice,category,inventoryLines',  // Include all necessary data
                 'count': 100
-            }
+            },
+            timeout: 30000 // 30 second timeout
         });
 
         // Parse JSON:API response with included relationships
@@ -177,10 +178,17 @@ async function fetchInflowProducts() {
         return products;
     } catch (error) {
         // Log detailed error info
-        console.error('[inFlow] API Error:', error.response?.status, error.response?.statusText);
-        console.error('[inFlow] Error Data:', JSON.stringify(error.response?.data || error.message));
+        if (error.response) {
+            console.error('[inFlow] API Error Response:', error.response.status, error.response.statusText);
+            console.error('[inFlow] Error Data:', JSON.stringify(error.response.data));
+        } else if (error.request) {
+            console.error('[inFlow] No response received. Error Code:', error.code);
+            console.error('[inFlow] Error Message:', error.message);
+        } else {
+            console.error('[inFlow] Request Setup Error:', error.message);
+        }
+
         console.error('[inFlow] Request URL:', error.config?.url);
-        console.error('[inFlow] Request Headers:', JSON.stringify(error.config?.headers));
         throw new Error(`Failed to fetch inFlow products: ${error.response?.data?.message || error.message}`);
     }
 }
@@ -352,7 +360,7 @@ async function updateShopifyProduct(productId, product) {
         const images = product.defaultImage?.originalUrl ? [{ src: product.defaultImage.originalUrl }] :
             (product.images && product.images.length > 0 ? product.images.map(img => ({ src: img.originalUrl || img.url })) : []);
 
-        log(`  📸 Syncing ${images.length} images for product ${productId}...`);
+        log(`Syncing ${images.length} images for product ${productId}...`);
 
         const response = await axios.put(
             `${getRestUrl()}/products/${productId}.json`,
@@ -408,33 +416,33 @@ async function startSync(channelIds = null) {
             throw new Error('Shopify credentials are not configured (PRIVATE_STOREFRONT_API_TOKEN, PUBLIC_STORE_DOMAIN)');
         }
 
-        log('🚀 Starting inFlow to Shopify sync...');
+        log('Starting inFlow to Shopify sync...');
         if (channelIds && channelIds.length > 0) {
-            log(`📺 Target channels: ${channelIds.length} selected`);
+            log(`Target channels: ${channelIds.length} selected`);
         }
-        log('📥 Fetching products from inFlow Inventory...');
+        log('Fetching products from inFlow Inventory...');
 
         // Step A: Fetch products from inFlow
         const inflowProducts = await fetchInflowProducts();
         summary.total = inflowProducts.length;
 
-        log(`✅ Fetched ${inflowProducts.length} products from inFlow`);
+        log(`Fetched ${inflowProducts.length} products from inFlow`);
 
         if (inflowProducts.length === 0) {
-            log('⚠️ No products found in inFlow. Sync complete.');
+            log('No products found in inFlow. Sync complete.');
             return { success: true, logs, summary };
         }
 
         // Step B: Sync each product to Shopify
-        log('🔄 Starting Shopify sync...');
+        log('Starting Shopify sync...');
 
         // Debug: Find product with images
         const withImages = inflowProducts.find(p => p.images?.length > 0 || p.defaultImage || p.attributes?.imageUrl);
         if (withImages) {
             const imgUrl = withImages.images?.[0]?.originalUrl || withImages.defaultImage?.originalUrl || withImages.attributes?.imageUrl;
-            log(`📸 Found product with images: ${withImages.attributes.name} - ${imgUrl}`);
+            log(`Found product with images: ${withImages.attributes.name} - ${imgUrl}`);
         } else {
-            log('⚠️ No products found with images in this batch.');
+            log('No products found with images in this batch.');
         }
 
         // Debug: Find product with non-zero stock
@@ -446,12 +454,12 @@ async function startSync(channelIds = null) {
         if (withStock) {
             const invLines = withStock.inventoryLines || [];
             const total = invLines.reduce((sum, line) => sum + (parseFloat(line.quantityOnHand || line.quantity) || 0), 0);
-            log(`🔢 Found product with stock: ${withStock.attributes.name} - Stock: ${total || withStock.attributes.totalQuantityOnHand}`);
+            log(`Found product with stock: ${withStock.attributes.name} - Stock: ${total || withStock.attributes.totalQuantityOnHand}`);
         }
 
         // Batch processing configuration
         const BATCH_SIZE = 5; // Process 5 products concurrently
-        log(`🚀 Starting batch sync (${BATCH_SIZE} products at a time)...`);
+        log(`Starting batch sync (${BATCH_SIZE} products at a time)...`);
 
         // Prepare all products for processing
         const productsToSync = inflowProducts
@@ -547,7 +555,7 @@ async function startSync(channelIds = null) {
 
         const skippedCount = inflowProducts.length - productsToSync.length;
         if (skippedCount > 0) {
-            log(`⚠️ Skipping ${skippedCount} products without SKU`);
+            log(`Skipping ${skippedCount} products without SKU`);
         }
 
         // Process products in batches
@@ -556,7 +564,7 @@ async function startSync(channelIds = null) {
             const batchNum = Math.floor(i / BATCH_SIZE) + 1;
             const totalBatches = Math.ceil(productsToSync.length / BATCH_SIZE);
 
-            log(`📦 Processing batch ${batchNum}/${totalBatches} (${batch.length} products)...`);
+            log(`Processing batch ${batchNum}/${totalBatches} (${batch.length} products)...`);
 
             // Process batch in parallel
             const results = await Promise.allSettled(
@@ -651,22 +659,22 @@ async function startSync(channelIds = null) {
                         if (data.stockChanged) changes.push(`Stock: ${data.stock}`);
                         const changeDetails = changes.length > 0 ? ` (${changes.join(', ')})` : '';
                         const publishNote = data.publishedCount > 0 ? `, Published to ${data.publishedCount} channel(s)` : '';
-                        log(`  ✅ ${data.sku}: Updated${changeDetails}${publishNote}`);
+                        log(`${data.sku}: Updated${changeDetails}${publishNote}`);
                     } else if (data.status === 'skipped') {
                         summary.skipped++;
                         // Don't log skipped items to keep logs clean
                     } else if (data.status === 'created') {
                         summary.created++;
                         summary.published += data.publishedCount || 0;
-                        const publishNote = data.publishedCount > 0 ? ` → Published to ${data.publishedCount} channel(s)` : '';
-                        log(`  ✅ ${data.sku}: Created${publishNote}`);
+                        const publishNote = data.publishedCount > 0 ? ` - Published to ${data.publishedCount} channel(s)` : '';
+                        log(`${data.sku}: Created${publishNote}`);
                     } else if (data.status === 'failed') {
                         summary.failed++;
-                        log(`  ❌ ${data.sku}: ${data.error}`);
+                        log(`${data.sku}: ${data.error}`);
                     }
                 } else { // result.status === 'rejected'
                     summary.failed++;
-                    log(`  ❌ Batch error for a product: ${result.reason}`);
+                    log(`  Batch error for a product: ${result.reason}`);
                 }
             }
 
@@ -678,7 +686,7 @@ async function startSync(channelIds = null) {
 
         // Final summary
         log('─'.repeat(50));
-        log(`📊 Sync Complete!`);
+        log(`Sync Complete!`);
         log(`   Total Products: ${summary.total}`);
         log(`   Created: ${summary.created}`);
         log(`   Updated: ${summary.updated}`);
@@ -693,7 +701,7 @@ async function startSync(channelIds = null) {
         };
 
     } catch (error) {
-        log(`❌ Sync failed: ${error.message}`);
+        log(`Sync failed: ${error.message}`);
         return { success: false, logs, summary };
     }
 }
