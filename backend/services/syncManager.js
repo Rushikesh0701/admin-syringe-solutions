@@ -588,34 +588,32 @@ async function startSync(channelIds = null) {
                         let productId = null;
 
                         if (existingVariant) {
-                            // Product exists - Check if anything changed (name, price, stock)
+                            // Product exists — only check price and stock (the fields inFlow manages).
+                            // Do NOT compare titles: the client may rename products in Shopify and we
+                            // must not trigger an update (and image push) just because names differ.
                             const shopifyPrice = parseFloat(existingVariant.price).toFixed(2);
                             const inflowPrice = parseFloat(price).toFixed(2);
                             const shopifyStock = existingVariant.inventoryQuantity || 0;
-                            const shopifyTitle = (existingVariant.product?.title || '').trim();
-                            const inflowTitle = (name || '').trim();
 
                             const priceChanged = shopifyPrice !== inflowPrice;
                             const stockChanged = shopifyStock !== stock;
-                            const titleChanged = shopifyTitle !== inflowTitle;
 
-                            // Debug logging to see what's different
-                            if (priceChanged || stockChanged || titleChanged) {
+                            // Debug logging
+                            if (priceChanged || stockChanged) {
                                 console.log(`[DEBUG] ${sku} - Changes detected:`);
                                 if (priceChanged) console.log(`  Price: Shopify="${shopifyPrice}" vs inFlow="${inflowPrice}"`);
                                 if (stockChanged) console.log(`  Stock: Shopify=${shopifyStock} vs inFlow=${stock}`);
-                                if (titleChanged) console.log(`  Title: Shopify="${shopifyTitle}" vs inFlow="${inflowTitle}"`);
                             }
 
                             // If nothing changed, skip this product
-                            if (!priceChanged && !stockChanged && !titleChanged) {
+                            if (!priceChanged && !stockChanged) {
                                 return { status: 'skipped', sku };
                             }
 
-                            // Something changed - UPDATE
+                            // Something changed - UPDATE price/stock only
                             await updateShopifyVariant(existingVariant.id, product, existingVariant);
 
-                            // Update product-level info (images)
+                            // Update product-level info (images only — title/desc/vendor preserved)
                             productId = existingVariant.product?.id;
                             if (productId) {
                                 const numericProductId = productId.replace('gid://shopify/Product/', '');
@@ -631,7 +629,7 @@ async function startSync(channelIds = null) {
                                 }
                             }
 
-                            return { status: 'updated', sku, price, stock, publishedCount, priceChanged, stockChanged, titleChanged };
+                            return { status: 'updated', sku, price, stock, publishedCount, priceChanged, stockChanged };
                         } else {
                             // Product doesn't exist - CREATE
                             const createdProduct = await createShopifyProduct(product);
@@ -662,7 +660,6 @@ async function startSync(channelIds = null) {
                         summary.updated++;
                         summary.published += data.publishedCount || 0;
                         const changes = [];
-                        if (data.titleChanged) changes.push('Title');
                         if (data.priceChanged) changes.push(`Price: $${data.price}`);
                         if (data.stockChanged) changes.push(`Stock: ${data.stock}`);
                         const changeDetails = changes.length > 0 ? ` (${changes.join(', ')})` : '';
