@@ -85,6 +85,19 @@ const log = (msg) => {
 };
 
 /**
+ * Extracts a readable error message from a Shopify API error response
+ */
+function formatShopifyError(error) {
+    const data = error.response?.data;
+    if (!data) return error.message;
+    if (data.errors) {
+        return Array.isArray(data.errors) ? data.errors.join('; ') : JSON.stringify(data.errors);
+    }
+    if (data.error) return typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+    return JSON.stringify(data);
+}
+
+/**
  * Fetches all products from inFlow Inventory API
  * @returns {Promise<Array>} Array of products with Name, SKU, Price, Stock
  */
@@ -212,6 +225,7 @@ async function searchShopifyBySku(sku) {
               inventoryQuantity
               inventoryItem {
                 id
+                tracked
                 inventoryLevels(first: 1) {
                   edges {
                     node {
@@ -252,6 +266,7 @@ async function searchShopifyBySku(sku) {
                 price: v.price,
                 inventoryQuantity: v.inventoryQuantity,
                 inventoryItemId: v.inventoryItem?.id,
+                inventoryTracked: v.inventoryItem?.tracked,
                 locationId: v.inventoryItem?.inventoryLevels?.edges[0]?.node?.location?.id,
                 product: v.product
             };
@@ -304,27 +319,121 @@ async function createShopifyProduct(product) {
 }
 
 /**
+ * Enables inventory tracking on a Shopify variant
+ * @param {string} numericVariantId - Numeric Shopify variant ID
+ */
+async function enableInventoryTracking(numericVariantId) {
+    try {
+        await axios.put(
+            `${getRestUrl()}/variants/${numericVariantId}.json`,
+            {
+                variant: {
+                    id: numericVariantId,
+                    inventory_management: 'shopify'
+                }
+            },
+            {
+                headers: {
+                    'X-Shopify-Access-Token': getAccessToken(),
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+    } catch (error) {
+        throw new Error(`Failed to enable inventory tracking: ${formatShopifyError(error)}`);
+    }
+}
+
+/**
+ * Connects an inventory item to a location so stock can be set
+ * @param {string} inventoryItemId - Numeric inventory item ID
+ * @param {string} locationId - Numeric location ID
+ */
+async function connectInventoryToLocation(inventoryItemId, locationId) {
+    try {
+        await axios.post(
+            `${getRestUrl()}/inventory_levels/connect.json`,
+            {
+                location_id: locationId,
+                inventory_item_id: inventoryItemId
+            },
+            {
+                headers: {
+                    'X-Shopify-Access-Token': getAccessToken(),
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+    } catch (error) {
+        throw new Error(`Failed to connect inventory to location: ${formatShopifyError(error)}`);
+    }
+}
+
+/**
+ * Syncs stock for a variant — enables tracking, connects to location if needed, then sets quantity
+ * @param {Object} existingVariant - Existing Shopify variant from searchShopifyBySku
+ * @param {string} numericVariantId - Numeric variant ID
+ * @param {number} stock - Target stock quantity
+ */
+async function syncVariantStock(existingVariant, numericVariantId, stock) {
+    if (!existingVariant.inventoryItemId) {
+        throw new Error('No inventory item found for variant');
+    }
+
+    const inventoryItemId = existingVariant.inventoryItemId.replace('gid://shopify/InventoryItem/', '');
+
+    if (existingVariant.inventoryTracked === false) {
+        log(`  Enabling inventory tracking for variant ${numericVariantId}...`);
+        await enableInventoryTracking(numericVariantId);
+    }
+
+    const locationId = existingVariant.locationId
+        ? existingVariant.locationId.replace('gid://shopify/Location/', '')
+        : String(await fetchShopifyLocations());
+
+    if (!existingVariant.locationId) {
+        log(`  No inventory location on variant — using primary location ${locationId}`);
+        await connectInventoryToLocation(inventoryItemId, locationId);
+    }
+
+    try {
+        await updateShopifyStock(inventoryItemId, locationId, stock);
+    } catch (error) {
+        const detail = error.message.toLowerCase();
+        if (detail.includes('422') || detail.includes('not stocked') || detail.includes('connection')) {
+            log(`  Retrying stock update after connecting to location ${locationId}...`);
+            await connectInventoryToLocation(inventoryItemId, locationId);
+            await updateShopifyStock(inventoryItemId, locationId, stock);
+        } else {
+            throw error;
+        }
+    }
+}
+
+/**
  * Update an existing product variant in Shopify
  * @param {string} variantId - Shopify variant ID
  * @param {Object} product - Product data from inFlow
  * @param {Object} existingVariant - Existing Shopify variant object (containing inventoryItem ID)
+ * @param {Object} options - { stockChanged, priceChanged }
  * @returns {Promise<Object>} Updated variant response
  */
-async function updateShopifyVariant(variantId, product, existingVariant) {
-    try {
-        // Extract numeric ID from GraphQL ID
-        const numericId = variantId.replace('gid://shopify/ProductVariant/', '');
+async function updateShopifyVariant(variantId, product, existingVariant, { stockChanged = true, priceChanged = true } = {}) {
+    const numericId = variantId.replace('gid://shopify/ProductVariant/', '');
+    let stockError = null;
 
-        // Update stock via InventoryLevel API
-        if (existingVariant.inventoryItemId && existingVariant.locationId) {
-            const inventoryItemId = existingVariant.inventoryItemId.replace('gid://shopify/InventoryItem/', '');
-            const locationId = existingVariant.locationId.replace('gid://shopify/Location/', '');
-            const stockValue = product.totalQuantityOnHand || (product.inventoryLines && Array.isArray(product.inventoryLines) ? product.inventoryLines.reduce((sum, line) => sum + (parseFloat(line.quantityOnHand || line.quantity) || 0), 0) : 0);
-            const stock = Math.floor(parseFloat(stockValue) || 0);
+    if (stockChanged && existingVariant.inventoryItemId) {
+        const stockValue = product.totalQuantityOnHand || (product.inventoryLines && Array.isArray(product.inventoryLines) ? product.inventoryLines.reduce((sum, line) => sum + (parseFloat(line.quantityOnHand || line.quantity) || 0), 0) : 0);
+        const stock = Math.floor(parseFloat(stockValue) || 0);
 
-            await updateShopifyStock(inventoryItemId, locationId, stock);
+        try {
+            await syncVariantStock(existingVariant, numericId, stock);
+        } catch (error) {
+            stockError = error;
         }
+    }
 
+    try {
         const response = await axios.put(
             `${getRestUrl()}/variants/${numericId}.json`,
             {
@@ -343,9 +452,16 @@ async function updateShopifyVariant(variantId, product, existingVariant) {
             }
         );
 
+        if (stockError) {
+            throw new Error(`Failed to update Shopify stock: ${stockError.message}`);
+        }
+
         return response.data.variant;
     } catch (error) {
-        throw new Error(`Failed to update Shopify variant: ${error.message}`);
+        if (stockError) {
+            throw new Error(`Failed to update Shopify variant: ${stockError.message}`);
+        }
+        throw new Error(`Failed to update Shopify variant: ${formatShopifyError(error)}`);
     }
 }
 
@@ -611,7 +727,7 @@ async function startSync(channelIds = null) {
                             }
 
                             // Something changed - UPDATE price/stock only
-                            await updateShopifyVariant(existingVariant.id, product, existingVariant);
+                            await updateShopifyVariant(existingVariant.id, product, existingVariant, { priceChanged, stockChanged });
 
                             // Update product-level info (images only — title/desc/vendor preserved)
                             productId = existingVariant.product?.id;
@@ -833,8 +949,10 @@ async function fetchShopifyLocations() {
         const locations = response.data.locations || [];
         if (locations.length === 0) throw new Error('No locations found in Shopify');
 
-        // Prefer active, fulfillment-oriented locations
-        const primary = locations.find(loc => loc.active) || locations[0];
+        // Prefer active warehouse locations over fulfillment-service locations
+        const primary = locations.find(loc => loc.active && !loc.fulfillment_service)
+            || locations.find(loc => loc.active)
+            || locations[0];
         primaryLocationId = primary.id;
         console.log(`[Shopify] Using primary location: ${primary.name} (${primaryLocationId})`);
         return primaryLocationId;
@@ -869,7 +987,7 @@ async function updateShopifyStock(inventoryItemId, locationId, available) {
 
         return response.data.inventory_level;
     } catch (error) {
-        throw new Error(`Failed to update Shopify stock: ${error.message}`);
+        throw new Error(`Failed to update Shopify stock: ${formatShopifyError(error)}`);
     }
 }
 
@@ -881,6 +999,9 @@ module.exports = {
     updateShopifyProduct,
     updateShopifyVariant,
     updateShopifyStock,
+    syncVariantStock,
+    enableInventoryTracking,
+    connectInventoryToLocation,
     fetchShopifyChannels,
     publishProductToChannel,
     fetchShopifyLocations,
